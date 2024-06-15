@@ -1,0 +1,949 @@
+
+	device pic16c74a,hs_osc,wdt_off,protect_off
+
+;
+;	CDJ controler	for 20MHz
+;
+
+CARRY	=	status.0
+ZERO	=	status.2
+INDR	=	0
+RTCC	=	tmr0
+PC	=	pcl
+
+
+AD_CLK	=	rb.1
+AD_DOUT	=	rb.0
+AD_DIN	=	rd.7
+AD_CS	=	rd.6
+
+	org	20h
+
+work0	ds	1
+work1	ds	1
+sts	ds	1
+
+STS_WHEEL =	sts.0
+STS_KEY	=	sts.1
+STS_CF	=	sts.2
+STS_VOL	=	sts.3
+
+rvphase	ds	1		;0-3, 0ffh
+rvdata	ds	4
+senddata	ds	1
+
+scanphase	ds	1
+ledsts	ds	8		;6-7:dummy
+keysts	ds	8		;6-7:dummy
+
+keydata	ds	2		;valid on STS_KEY
+volphase	ds	1	;0-7
+vol_bufh	ds	1
+vol_bufl	ds	1
+
+val_a	ds	1
+val_b	ds	1
+pos_ah	ds	1
+pos_al	ds	1
+pos_bh	ds	1
+pos_bl	ds	1
+pos_buf	ds	1
+
+
+	org	0
+startup
+	goto	init
+
+
+recv_rs
+	btfss	pir1, 5
+	return
+	
+	movf	rcreg, 0
+	addlw	99h		; 'f' + 99h = 0ffh
+	btfsc	CARRY
+	return			; > 'f'
+	
+	addlw	6
+	btfsc	CARRY
+	goto	:hex		; >= 'a'
+	
+	addlw	1ah
+	btfsc	CARRY
+	return			; > 'F'
+	
+	addlw	6
+	btfsc	CARRY
+	goto	:hex		; >= 'A'
+	
+	addlw	7
+	btfsc	CARRY
+	return			; > '9'
+	
+	addlw	0ah
+	btfsc	CARRY
+	goto	:dec		; >= '0'
+	
+	addlw	10h
+	btfsc	CARRY
+	return			; >= ' '
+	
+	xorlw	0ech		; ^L
+	btfsc	ZERO
+	goto	:cmd_ff
+	
+	xorlw	6		; ^J
+	btfsc	ZERO
+	goto	:cmd_lf
+	
+	xorlw	3		; TAB
+	btfss	ZERO
+	goto	:reset
+	
+	clrf	rvphase
+	return
+:cmd_ff
+	bsf	STS_WHEEL
+	bsf	STS_CF
+	goto	:reset
+:cmd_lf
+	bsf	STS_WHEEL
+	bsf	STS_VOL
+:reset
+	movlw	0ffh
+	movwf	rvphase
+	return
+:hex
+	addlw	0ah
+:dec
+	movwf	work0
+	
+	movf	rvphase, 0
+	incf	rvphase, 1
+	btfsc	ZERO
+	goto	:reset
+	
+	addlw	rvdata
+	movwf	fsr
+	
+	movf	work0, 0
+	movwf	indr
+	btfss	rvphase, 2
+	return
+				;rvphase == 4
+	clrf	rvphase
+	
+	movf	rvdata, 0
+	iorwf	rvdata + 1, 0
+	btfss	ZERO
+	return			; not '\t00..'
+	
+	movf	rvdata + 2, 0
+	andlw	7
+	addlw	ledsts
+	movwf	fsr
+	
+	movf	rvdata + 3, 0
+	movwf	indr
+	goto	recv_rs
+
+
+		;val_a, val_bを補正し、work1になるべき初期値を返す。
+calcpar
+	bcf	CARRY
+	rrf	val_a, 1	; a /= 2
+	btfsc	val_a, 6
+	bsf	val_a, 7
+	
+	bcf	CARRY
+	rrf	val_b, 1	; b /= 2
+	btfsc	val_b, 6
+	bsf	val_b, 7
+	
+		; work1 : lowの候補値
+	
+	movf	val_a, 0
+	subwf	val_b, 0	; W = b - a
+	movwf	work0
+	btfsc	work0, 7
+	goto	:case_30
+; case_12			; b > a
+	movf	val_a, 0
+	addwf	val_b, 0
+	movwf	work0
+	btfsc	work0, 7
+	goto	:case_2
+; case_1				; (b > a)&&(b > -a)	(b > 0)
+	movf	val_a, 0
+	subwf	val_b, 0
+	movwf	val_a		; a = b - a
+	
+	retlw	40h
+:case_2				; (b > a)&&(b < -a)	(a < 0)
+	decf	val_a, 0
+	xorlw	0ffh
+	movwf	val_a		; a = (-a)
+	movwf	work0
+	
+	movf	val_b, 0
+	subwf	val_a, 1	; a = (-a) - b
+	
+	movf	work0, 0
+	movwf	val_b		; b = (-a)
+	
+	retlw	80h
+:case_30			; b < a
+	movf	val_a, 0
+	addwf	val_b, 0
+	movwf	work0
+	btfss	work0, 7
+	goto	:case_0
+; case_3			; (b < a)&&(b < -a)	(b < 0)
+	decf	val_b, 0
+	xorlw	0ffh
+	movwf	val_b		; b = (-b)
+	
+	addwf	val_a, 1	; a += (-b)
+	
+	retlw	0c0h
+:case_0				; (b < a)&&(b > -a)	(a > 0)
+	movf	val_a, 0
+	movwf	work0
+	
+	movf	val_b, 0
+	addwf	val_a, 1	; a += b
+	
+	movf	work0, 0
+	movwf	val_b		; b = a
+	
+	retlw	0
+
+
+		; (32 * val_a / val_b)を計算してwork1にorする。
+		; val_a, val_bとも、正でMSBは0
+calcdiv
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfsc	work0, 7
+	goto	:bit4
+	
+	movwf	val_a
+	bsf	work1, 5
+:bit4
+	bcf	CARRY
+	rlf	val_a, 1
+	
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfsc	work0, 7
+	goto	:bit3
+	
+	movwf	val_a
+	bsf	work1, 4
+:bit3
+	bcf	CARRY
+	rlf	val_a, 1
+	
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfsc	work0, 7
+	goto	:bit2
+	
+	movwf	val_a
+	bsf	work1, 3
+:bit2
+	bcf	CARRY
+	rlf	val_a, 1
+	
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfsc	work0, 7
+	goto	:bit1
+	
+	movwf	val_a
+	bsf	work1, 2
+:bit1
+	bcf	CARRY
+	rlf	val_a, 1
+	
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfsc	work0, 7
+	goto	:bit0
+	
+	movwf	val_a
+	bsf	work1, 1
+:bit0
+	bcf	CARRY
+	rlf	val_a, 1
+	
+	movf	val_b, 0
+	subwf	val_a, 0	; a - b
+	movwf	work0
+	
+	btfss	work0, 7
+	bsf	work1, 0
+	
+	retlw	0
+
+
+scan
+	call	recv_rs
+	btfsc	RTCC, 7
+	return
+	
+	movlw	10h		;320uS
+	subwf	RTCC, 1
+	
+	movf	scanphase, 0
+	andlw	7
+	addlw	keysts
+	movwf	fsr
+	
+	movf	indr, 0
+	xorwf	rb, 0
+	movwf	work0
+	andlw	0ch		;SW
+	xorwf	indr, 1
+	
+	btfsc	STS_KEY
+	goto	scan_led
+	
+	movf	scanphase, 0
+	andlw	7
+	movwf	keydata
+	
+	btfsc	work0, 4
+	goto	:bit4
+	btfsc	work0, 5
+	goto	:bit5
+	btfsc	work0, 6
+	goto	:bit6
+	btfsc	work0, 7
+	goto	:bit7
+	goto	scan_led
+:bit4
+	movlw	0
+	movwf	keydata + 1
+	movlw	10h
+	goto	:common
+:bit5
+	movlw	2
+	movwf	keydata + 1
+	movlw	20h
+	goto	:common
+:bit6
+	movlw	4
+	movwf	keydata + 1
+	movlw	40h
+	goto	:common
+:bit7
+	movlw	6
+	movwf	keydata + 1
+	movlw	80h
+:common
+	xorwf	indr, 1
+	andwf	indr, 0
+	
+	btfss	ZERO
+	bsf	keydata + 1, 0
+	bsf	STS_KEY
+	
+scan_led
+	clrf	re
+	incf	scanphase, 1
+	call	scan_table
+	movwf	rd
+	
+	movf	scanphase, 0
+	andlw	7
+	addlw	ledsts
+	movwf	fsr
+	
+	movf	indr, 0
+	movwf	work0
+	btfss	scanphase, 3
+	goto	:even
+	
+	btfsc	work0, 0
+	bcf	work0, 1
+	movf	work0, 0
+	movwf	re
+	goto	scan_wheel0
+	
+:even
+	btfsc	work0, 1
+	bcf	work0, 0
+	movf	work0, 0
+	movwf	re
+	
+scan_wheel0
+	movlw	89h
+	movwf	adcon0
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs		;2uS?
+	
+	movlw	8dh
+	movwf	adcon0
+:wait
+	btfsc	adcon0, 2
+	goto	:wait
+	
+	movf	adres, 0
+	xorlw	80h
+	movwf	val_a
+	
+scan_wheel1
+	movlw	81h
+	movwf	adcon0
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs		;2uS?
+	
+	movlw	85h
+	movwf	adcon0
+:wait
+	btfsc	adcon0, 2
+	goto	:wait
+	
+	movf	adres, 0
+	xorlw	80h
+	movwf	val_b
+	
+	call	recv_rs
+	
+	call	calcpar
+	movwf	work1
+	
+	call	recv_rs
+	call	calcdiv
+	call	recv_rs
+	
+	movf	val_b, 0
+	andlw	0ffh
+	andlw	0fch
+	btfsc	ZERO
+	goto	scan_wheel2	;値が小さ過ぎる場合は無効。
+	
+	btfss	work1, 7
+	goto	:low
+	btfsc	pos_al, 7
+	goto	:next
+				; (old < 128)&&(new >= 128)
+	movf	work1, 0
+	subwf	pos_al, 1	; old =- new
+	btfss	pos_al, 7
+	decf	pos_ah, 1
+	
+	goto	:next
+:low
+	btfss	pos_al, 7
+	goto	:next
+				; (old >= 128)&&(new < 128)
+	
+	movf	work1, 0
+	subwf	pos_al, 1	; old =- new
+	btfsc	pos_al, 7
+	incf	pos_ah, 1
+:next
+	movf	work1, 0
+	movwf	pos_al
+	
+scan_wheel2
+	movlw	91h
+	movwf	adcon0
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs		;2uS?
+	
+	movlw	95h
+	movwf	adcon0
+:wait
+	btfsc	adcon0, 2
+	goto	:wait
+	
+	movf	adres, 0
+	xorlw	80h
+	movwf	val_a
+	
+scan_wheel3
+	movlw	99h
+	movwf	adcon0
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs		;2uS?
+	
+	movlw	9dh
+	movwf	adcon0
+:wait
+	btfsc	adcon0, 2
+	goto	:wait
+	
+	movf	adres, 0
+	xorlw	80h
+	movwf	val_b
+	
+	call	recv_rs
+	
+	call	calcpar
+	movwf	work1
+	
+	call	recv_rs
+	call	calcdiv
+	call	recv_rs
+	
+	movf	val_b, 0
+	andlw	0ffh
+	andlw	0fch
+	btfsc	ZERO
+	goto	scan_wheel4	;値が小さ過ぎる場合は無効。
+	
+	btfss	work1, 7
+	goto	:low
+	btfsc	pos_bl, 7
+	goto	:next
+				; (old < 128)&&(new >= 128)
+	movf	work1, 0
+	subwf	pos_bl, 1	; old =- new
+	btfss	pos_bl, 7
+	decf	pos_bh, 1
+	
+	goto	:next
+:low
+	btfss	pos_bl, 7
+	goto	:next
+				; (old >= 128)&&(new < 128)
+	
+	movf	work1, 0
+	subwf	pos_bl, 1	; old =- new
+	btfsc	pos_bl, 7
+	incf	pos_bh, 1
+:next
+	movf	work1, 0
+	movwf	pos_bl
+	
+scan_wheel4
+	return
+
+
+	org	200h
+scan_table
+	movlw	2
+	movwf	pclath
+	
+	movf	scanphase, 0
+	andlw	7
+	addwf	pcl, 1
+	retlw	0feh
+	retlw	0fdh
+	retlw	0fbh
+	retlw	0f7h
+	retlw	0efh
+	retlw	0dfh
+	retlw	0ffh
+	retlw	0ffh
+
+
+send_rs
+	movwf	senddata
+:loop
+	call	scan
+	btfss	pir1, 4
+	goto	:loop
+	movf	senddata, 0
+	movwf	txreg
+	return
+
+
+send_hexmsb
+	movwf	work1
+	rrf	work1, 1
+	rrf	work1, 1
+	rrf	work1, 1
+	rrf	work1, 0
+send_hex
+	andlw	0fh
+	addlw	0f6h
+	btfsc	CARRY
+	addlw	27h		;'a' - '0' + 0xa
+	addlw	3ah
+	goto	send_rs
+
+
+init
+	bcf	rp0
+	
+	movlw	40h		;rc:01000000(~TX=1)
+	movwf	rc
+	movlw	0ffh
+	movwf	rd		;rd:11111111
+	clrf	re		;re:-----000
+	
+	bsf	rp0
+	
+	movlw	2fh		;ra:--IOIIII
+	movwf	ra
+	movlw	0fdh		;rb:IIIIIIOI
+	movwf	rb
+	movlw	80h		;rc:IOOOOOOO	rc7:rx rc6:tx
+	clrf	rd		;rd:OOOOOOOO
+	clrf	re		;re:-----OOO
+	
+	movlw	7
+	movwf	option		;internal-clock/256(20uS) enable-rb-pullup
+	
+	movlw	24h		;8bit enable-TX BRGH
+	movwf	txsta
+	movlw	0ah		;115.2kbps
+	movwf	spbrg
+	
+	movlw	2
+	movwf	adcon1		;ra:--A-AAAA	re:-----DDD
+	
+	bcf	rp0
+	
+	movlw	90h		;enable-SCI 8bit enable-RX
+	movwf	rcsta
+	
+	movlw	81h		;AD enable(ADtime=1.6uS, ch=0)
+	movwf	adcon0
+	
+	clrf	sts
+	
+	movlw	0ffh
+	movwf	rvphase
+	
+	clrf	scanphase
+	movlw	0ffh
+	movwf	ledsts
+	movwf	ledsts + 1
+	movwf	ledsts + 2
+	movwf	ledsts + 3
+	movwf	ledsts + 4
+	movwf	ledsts + 5
+	movwf	ledsts + 6
+	movwf	ledsts + 7
+	movwf	keysts
+	movwf	keysts + 1
+	movwf	keysts + 2
+	movwf	keysts + 3
+	movwf	keysts + 4
+	movwf	keysts + 5
+	movwf	keysts + 6
+	movwf	keysts + 7
+	
+	clrf	pos_ah
+	clrf	pos_al
+	clrf	pos_bh
+	clrf	pos_bl
+	
+	clrf	volphase
+	
+main
+	call	scan
+	btfsc	STS_WHEEL
+	goto	send_wheel
+	btfsc	STS_KEY
+	goto	send_key
+	btfsc	STS_CF
+	goto	send_cf
+	btfsc	STS_VOL
+	goto	send_vol
+	
+	goto	main
+
+send_key
+	movlw	2fh		;'/'
+	call	send_rs
+	movlw	66h		;'f'
+	call	send_rs
+	movlw	30h		;'0'
+	call	send_rs
+	movf	keydata, 0
+	call	send_hex
+	movf	keydata + 1, 0
+	bcf	STS_KEY
+	call	send_hex
+	goto	main
+
+send_cf
+	bcf	STS_CF
+	
+	movlw	0a1h
+	movwf	adcon0
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs
+	call	recv_rs		;2uS ?
+	
+	movlw	0a5h
+	movwf	adcon0
+:wait
+	btfsc	adcon0, 2
+	goto	:wait
+	
+	movf	adres, 0
+	movwf	vol_bufl
+	
+	movlw	2fh		;'/'
+	call	send_rs
+	movlw	65h		;'e'
+	call	send_rs
+	movlw	66h		;'f'
+	call	send_rs
+	
+	movf	vol_bufl, 0
+	call	send_hexmsb
+	movf	vol_bufl, 0
+	call	send_hex
+	goto	main
+
+send_vol
+	bcf	STS_VOL
+	
+	movlw	2fh		;'/'
+	call	send_rs
+	movlw	66h		;'f'
+	call	send_rs
+	movlw	30h		;'0'
+	call	send_rs
+	
+	movf	volphase, 0
+	andlw	7
+	addlw	30h		;'0'
+	call	send_rs
+	
+	movf	volphase, 0
+	andlw	7
+	addlw	keysts
+	movwf	fsr
+	
+	movf	indr, 0
+	movwf	work0
+	rrf	work0, 1
+	rrf	work0, 0
+	andlw	3
+	iorlw	8		;8-0bh
+	call	send_hex
+	
+	movlw	2fh		;'/'
+	call	send_rs
+	
+	movf	volphase, 0
+	andlw	7
+	addlw	30h		;'0'
+	call	send_rs
+	
+	bcf	AD_CS
+	bsf	AD_DIN
+	clrf	vol_bufh
+	bsf	AD_CLK		;start
+	clrf	vol_bufl
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;single
+	nop
+	bcf	AD_CLK
+	
+	bcf	AD_DIN
+	btfsc	volphase, 2
+	bsf	AD_DIN
+	nop
+	bsf	AD_CLK		;d2
+	nop
+	bcf	AD_CLK
+	
+	bcf	AD_DIN
+	btfsc	volphase, 1
+	bsf	AD_DIN
+	nop
+	bsf	AD_CLK		;d1
+	nop
+	bcf	AD_CLK
+	
+	bcf	AD_DIN
+	btfsc	volphase, 0
+	bsf	AD_DIN
+	nop
+	bsf	AD_CLK		;d0
+	nop
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;sample
+	nop
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;null
+	nop
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b11
+	btfsc	AD_DOUT
+	bsf	vol_bufh, 3
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b10
+	btfsc	AD_DOUT
+	bsf	vol_bufh, 2
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b9
+	btfsc	AD_DOUT
+	bsf	vol_bufh, 1
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b8
+	btfsc	AD_DOUT
+	bsf	vol_bufh, 0
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b7
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 7
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b6
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 6
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b5
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 5
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b4
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 4
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b3
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 3
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b2
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 2
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b1
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 1
+	bcf	AD_CLK
+	
+	nop
+	bsf	AD_CLK		;b0
+	btfsc	AD_DOUT
+	bsf	vol_bufl, 0
+	
+	movf	vol_bufh, 0
+	call	send_hex
+	
+	bcf	AD_CLK
+	bsf	AD_CS
+	
+	movf	vol_bufl, 0
+	call	send_hexmsb
+	movf	vol_bufl, 0
+	call	send_hex
+	
+	incf	volphase, 1
+	goto	main
+
+send_wheel
+	bcf	STS_WHEEL
+	
+	movlw	2fh		;'/'
+	call	send_rs
+	movlw	63h		;'c'
+	call	send_rs
+	
+	movf	pos_al, 0
+	movwf	pos_buf
+	
+	movf	pos_ah, 0
+	call	send_hex
+	movf	pos_buf, 0
+	call	send_hexmsb
+	movf	pos_buf, 0
+	call	send_hex
+	
+	movlw	2fh		;'/'
+	call	send_rs
+	movlw	64h		;'d'
+	call	send_rs
+	
+	movf	pos_bl, 0
+	movwf	pos_buf
+	
+	movf	pos_bh, 0
+	call	send_hex
+	movf	pos_buf, 0
+	call	send_hexmsb
+	movf	pos_buf, 0
+	call	send_hex
+	
+	goto	main
+
+
+

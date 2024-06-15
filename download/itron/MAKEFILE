@@ -1,0 +1,65 @@
+# makefile template
+# $Id: makefile,v 1.1.1.1 2003/02/04 07:17:49 inui Exp $
+
+TARGET		= itronts
+INSTALL_DIR	= //c/mtool/oaks32r
+CC		= m32r-elf-gcc.exe 
+CFLAGS		= -W -Wall -mmodel=small -O2 -c -I ../include/ 
+AS		= m32r-elf-gcc.exe 
+ASFLAGS		= -c -x assembler-with-cpp 
+LD		= m32r-elf-ld.exe
+LDFLAGS		= -N
+LSCRIPT		= m32r_sr.cmd
+LMC		= m32r-elf-objcopy.exe
+LMCFLAGS	= -O srec 
+NM		= m32r-elf-nm.exe
+NMFLAGS		= --numeric-sort
+CFGFLAGS	=
+
+HEADER		= $(TARGET).h itron.h itrondef.h
+SRC		= startup.s main.c serial.c inthdr.c itron.c
+OBJ		= startup.o main.o serial.o inthdr.o itron.o
+
+.SUFFIXES:
+.SUFFIXES:	.c .s .o
+
+.s.o:
+		$(AS) $(ASFLAGS) $<
+.c.o:
+		$(CC) $(CFLAGS) $(CFGFLAGS) $<
+all :		$(TARGET).out $(TARGET).map $(TARGET).lzh
+
+$(TARGET).out: $(OBJ) makefile
+	@echo "Making tmp file."
+	@echo INPUT( $(OBJ) ) > tmp.cmd
+	@echo SEARCH_DIR($(INSTALL_DIR)/tw32r/H-i386-cygwin32/m32r-elf/lib)  >> tmp.cmd
+	@echo SEARCH_DIR($(INSTALL_DIR)/tw32r/h-i386-cygwin32/lib/gcc-lib/m32r-elf/2.9-gnupro-99r1p1)  >> tmp.cmd
+	@echo GROUP( libm.a libc.a libgcc.a libmfp.a)   >> tmp.cmd
+	@echo GROUP(   >> tmp.cmd
+	@echo $(INSTALL_DIR)/lib32rg/libc32rmr.a )  >> tmp.cmd
+	@type $(LSCRIPT) >> tmp.cmd
+	$(LD) -o $(TARGET).out $(LDFLAGS) -T tmp.cmd
+	$(LMC) $(LMCFLAGS) $(TARGET).out $(TARGET).mot
+
+$(TARGET).map	:$(TARGET).out
+	$(NM) $(NMFLAGS) $(TARGET).out >$(TARGET).map
+
+$(TARGET).lzh	:$(SRC) $(HEADER) $(TARGET).map makefile $(LSCRIPT)
+	lha u -z1 $(TARGET).lzh $(SRC)
+	lha u -z1 $(TARGET).lzh $(HEADER) $(TARGET).map makefile $(LSCRIPT)
+
+
+clean:
+	-del *.o
+	-del $(TARGET).out $(TARGET).mot $(TARGET.map)
+
+####
+main.o:	main.c $(HEADER)
+serial.o:	serial.c $(HEADER)
+inthdr.o:	inthdr.c $(HEADER)
+startup.o:	startup.s
+da.o:	da.c $(HEADER)
+ata.o:	ata.c $(HEADER)
+dsp.o:	dsp.s
+block.o:	block.c $(HEADER)
+

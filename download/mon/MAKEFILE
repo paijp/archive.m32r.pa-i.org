@@ -1,0 +1,102 @@
+# makefile template
+# $Id: makefile,v 1.1.1.1 2003/02/04 07:17:49 inui Exp $
+
+TARGET		= mon
+INSTALL_DIR	= //c/mtool/oaks32r
+CC		= m32r-elf-gcc.exe 
+CFLAGS		= -W -Wall -mmodel=large -O2 -c -I ../include/
+AS		= m32r-elf-gcc.exe 
+ASFLAGS		= -c -x assembler-with-cpp 
+LD		= m32r-elf-ld.exe
+LDFLAGS		= -N
+LSCRIPT		= m32r.cmd
+LMC		= m32r-elf-objcopy.exe
+LMCFLAGS	= -O srec 
+NM		= m32r-elf-nm.exe
+NMFLAGS		= --numeric-sort
+CFGFLAGS	=
+HEADER		= mon.h
+EXTHDRS		= C:\MTOOL\oaks32r\tw32r\h-i386-cygwin32\m32r-elf\include/mr32r.h 
+SRCS		= main.c serial.c cli.c trapent.s
+OBJS1		= main.o serial.o cli.o trapent.o
+OBJS2		= 
+OBJS3		= 
+OBJS4		= 
+OBJS5		= 
+OBJS6		= 
+OBJS7		= 
+OBJS8		= 
+OBJS9		= 
+OBJS10		= 
+OBJS11		= 
+OBJS12		= 
+OBJS13		= 
+OBJS14		= 
+OBJS15		= 
+
+ALLOBJS		= $(OBJS1) $(OBJS2) $(OBJS3) $(OBJS4) $(OBJS5) $(OBJS6) $(OBJS7) $(OBJS8) $(OBJS9) \
+		  $(OBJS10) $(OBJS11) $(OBJS12) $(OBJS13) $(OBJS14) $(OBJS15)
+
+
+.SUFFIXES:
+.SUFFIXES:	.c .s .o
+
+.s.o:
+		$(AS) $(ASFLAGS) $<
+.c.o:
+		$(CC) $(CFLAGS) $(CFGFLAGS) $<
+all :		$(TARGET).out $(TARGET).map $(TARGET).lzh
+
+$(TARGET).out: $(ALLOBJS) makefile
+	@echo "Making tmp file."
+	@echo INPUT( $(OBJS1)  > tmp.cmd
+	@echo $(INSTALL_DIR)/lib32rg/mwif.o  >> tmp.cmd
+	@echo\$(OBJS2)  >> tmp.cmd
+	@echo\$(OBJS3)  >> tmp.cmd
+	@echo\$(OBJS4)  >> tmp.cmd
+	@echo\$(OBJS5)  >> tmp.cmd
+	@echo\$(OBJS6)  >> tmp.cmd
+	@echo\$(OBJS7)  >> tmp.cmd
+	@echo\$(OBJS8)  >> tmp.cmd
+	@echo\$(OBJS9)  >> tmp.cmd
+	@echo\$(OBJS10) >> tmp.cmd
+	@echo\$(OBJS11) >> tmp.cmd
+	@echo\$(OBJS12) >> tmp.cmd
+	@echo\$(OBJS13) >> tmp.cmd
+	@echo\$(OBJS14) >> tmp.cmd
+	@echo\$(OBJS15) ) >> tmp.cmd
+	@echo SEARCH_DIR(.)  >> tmp.cmd
+	@echo SEARCH_DIR($(INSTALL_DIR)/tw32r/H-i386-cygwin32/m32r-elf/lib/medium)  >> tmp.cmd
+	@echo SEARCH_DIR($(INSTALL_DIR)/tw32r/h-i386-cygwin32/lib/gcc-lib/m32r-elf/2.9-gnupro-99r1p1/medium)  >> tmp.cmd
+	@echo GROUP( libm.a libc.a libgcc.a libmfp.a)   >> tmp.cmd
+	@echo GROUP(   >> tmp.cmd
+	@echo $(INSTALL_DIR)/lib32rg/libc32rmr.a )  >> tmp.cmd
+	@type $(LSCRIPT) >> tmp.cmd
+	$(LD) -o $(TARGET).out $(LDFLAGS) -T tmp.cmd
+	$(LMC) $(LMCFLAGS) $(TARGET).out $(TARGET).mot
+	@echo "Delete tmp file."
+	-@del tmp.cmd
+
+$(TARGET).map	:$(TARGET).out
+	$(NM) $(NMFLAGS) $(TARGET).out >$(TARGET).map
+
+$(TARGET).lzh	:$(SRCS) $(HEADER) $(TARGET).map makefile $(LSCRIPT)
+	lha u -z1 $(TARGET).lzh $(SRCS)
+	lha u -z1 $(TARGET).lzh $(HEADER) $(TARGET).map makefile $(LSCRIPT)
+
+
+clean:
+	-del *.o
+	-del sys_rom.inc
+	-del sys_ram.inc
+	-del mr32r.inc
+	-del mrtable.inc
+	-del id.h
+	-del $(TARGET).out
+
+####
+main.o: main.c $(HEADER)
+serial.o:	serial.c $(HEADER)
+cli.o:	cli.c $(HEADER)
+trapent.o:	trapent.s
+

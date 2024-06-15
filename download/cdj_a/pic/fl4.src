@@ -1,0 +1,805 @@
+
+	device pic16f84,hs_osc,wdt_off,pwrt_on,protect_off
+
+;
+;	for 16C84 20MHz
+;
+;	RX:115200bps (negative)
+;
+
+
+CARRY	=	status.0
+ZERO	=	status.2
+RTCC	=	tmr0
+PC	=	pcl
+INDR	=	0
+
+FL_E	=	ra.3
+FL_R	=	ra.1
+FL_RS	=	ra.2
+RX	=	ra.0
+
+
+	org	0ch
+
+wait0	ds	1
+sts	ds	1
+
+STS_SEL	=	sts.0
+
+	org	10h
+buf0	ds	24	;dusp-buffer
+buf1	ds	24
+end_buf	ds	1
+
+
+	org	0
+	jmp	init
+
+	org	40h
+wait10ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+	call	wait1ms
+wait1ms
+	movlw	250
+	movwf	wait0
+:wait
+	nop
+	nop
+	nop
+	nop
+	
+	nop
+	nop
+	nop
+	nop
+	
+	nop
+	nop
+	nop
+	nop
+	
+	nop
+	nop
+	nop
+	nop
+	
+	nop
+	decfsz	wait0
+	goto	:wait
+	return
+
+
+writedata
+	movwf	rb
+	nop
+	nop
+	bsf	FL_E
+	nop
+	nop
+	bcf	FL_E
+	return
+
+init
+	clrf	ra		;ra:---00000
+	clrf	rb		;rb:00000000
+	
+	bsf	rp0
+	
+	movlw	1
+	movwf	ra		;ra:---OOOOI
+	clrf	rb		;rb:OOOOOOOO
+	movlw	0dfh
+	movwf	option		;tmr0 : 5MHz
+	
+	bcf	rp0
+	
+	movlw	end_buf-buf0
+	movwf	wait0
+	movlw	buf0
+	movwf	FSR
+:init_buf
+	clrf	INDR
+	incf	FSR, 1
+	decfsz	wait0, 1
+	goto	:init_buf
+	
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	call	wait10ms
+	
+	bcf	FL_R		;write
+	bcf	FL_RS		;command
+	movlw	30h		;8bit mode
+	call	writedata
+	call	wait10ms
+	call	writedata
+	call	wait10ms
+	call	writedata
+	call	wait10ms
+	
+	bsf	FL_RS		;data
+	movlw	3		;100% bright
+	call	writedata
+	
+	bcf	FL_RS		;command
+	movlw	2		;home
+	call	writedata
+	
+	movlw	6		;entry: inc no-shift
+	call	writedata
+	
+	movlw	0ch		;display on no-cursol no-blink
+	call	writedata
+	
+	movlw	40h		;CGRAM=0
+	call	writedata
+	
+	bsf	FL_RS		;data
+	movlw	0
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	movlw	0
+	call	writedata
+	movlw	1fh
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	bcf	FL_RS		;command
+	movlw	2		;home
+	call	writedata
+	
+	bsf	FL_RS		;data
+	movlw	40h		;'@'
+	call	writedata
+	
+	movlw	41h		;'A'
+	call	writedata
+	
+	movlw	42h		;'B'
+	call	writedata
+	
+	movlw	43h		;'C'
+	call	writedata
+	
+	movlw	20h		;' '
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	movlw	0		;'_'
+	call	writedata
+	movlw	1
+	call	writedata
+	movlw	2
+	call	writedata
+	movlw	3
+	call	writedata
+	movlw	4
+	call	writedata
+	movlw	5
+	call	writedata
+	movlw	6
+	call	writedata
+	movlw	7
+	call	writedata
+	
+	bcf	FL_RS		;command
+	movlw	0c0h		;DDRAM=40h
+	call	writedata
+	
+	bsf	FL_RS		;data
+	movlw	60h		;'`'
+	call	writedata
+	
+	movlw	61h		;'a'
+	call	writedata
+	
+	movlw	62h		;'b'
+	call	writedata
+	
+	movlw	63h		;'c'
+	call	writedata
+	
+	movlw	0		;'_'
+	call	writedata
+	movlw	1
+	call	writedata
+	movlw	2
+	call	writedata
+	movlw	3
+	call	writedata
+	movlw	4
+	call	writedata
+	movlw	5
+	call	writedata
+	movlw	6
+	call	writedata
+	movlw	7
+	call	writedata
+	
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	call	writedata
+	
+	clrf	sts
+	
+loop
+	btfsc	RX		;start-bit
+	goto	loop
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	
+	btfsc	RX		;start-bit
+	goto	loop
+	
+	bcf	FL_RS		;command
+	clrf	rb
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 0
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 1
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 2
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 3
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 4
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 5
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 6
+	
+	nop
+	nop
+	nop
+	nop
+	nop	;5
+	nop
+	nop
+	nop
+	nop
+	nop	;10
+	nop
+	nop
+	nop
+	nop
+	nop	;15
+	nop
+	nop
+	nop
+	nop
+	nop	;20
+	nop
+	nop
+	nop
+	nop
+	nop	;25
+	nop
+	nop
+	nop
+	nop
+	nop	;30
+	nop
+	nop
+	nop
+	nop
+	nop	;35
+	nop
+	nop
+	nop
+	nop
+	nop	;40
+	nop
+	btfsc	RX
+	bsf	rb, 7
+	
+	movf	rb, 0
+	andlw	0f8h
+	xorlw	8
+	btfsc	ZERO
+	goto	recv_cmd
+	
+	btfss	FSR, 6		;40h
+	btfss	STS_SEL
+	goto	loop
+	
+	movf	rb, 0
+	xorwf	INDR, 0
+	btfsc	ZERO
+	goto	:next_chr
+	
+	bsf	FL_RS		;data
+	movf	rb, 0		;wait
+	movwf	INDR
+	bsf	FL_E
+	incf	FSR, 1
+	bcf	FL_E
+	
+	goto	loop
+	
+:next_chr
+	movlw	14h		;DDRAM++
+	movwf	rb
+	nop
+	nop
+	bsf	FL_E
+	incf	FSR, 1		;wait
+	nop
+	bcf	FL_E
+	goto	loop
+	
+recv_cmd
+	btfsc	rb, 2		;04h
+	goto	:recv_ff
+	
+	btfsc	rb, 1		;02h
+	goto	:recv_lf
+	
+				;tab
+	bcf	STS_SEL
+	goto	loop
+	
+:recv_lf
+	bsf	STS_SEL
+	
+	movlw	0c0h		;DDRAM=40h
+	movwf	rb
+	nop
+	nop
+	bsf	FL_E
+	movlw	buf1		;wait
+	movwf	FSR		;wait
+	bcf	FL_E
+	goto	loop
+	
+:recv_ff
+	bsf	STS_SEL
+	
+	movlw	80h		;DDRAM=0
+	movwf	rb
+	nop
+	nop
+	bsf	FL_E
+	movlw	buf0		;wait
+	movwf	FSR		;wait
+	bcf	FL_E
+	goto	loop
+
+

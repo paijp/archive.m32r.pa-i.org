@@ -1,0 +1,102 @@
+
+subdesign main
+(
+	rstn	:input;
+	out_rstn	:output;
+	
+	bsel4	:input;
+	bsel5	:input;
+	in_rsn	:input;
+	in_wsn	:input;
+	in_adr[6..1]	:input;
+	
+	out_dir	:output;
+	out_rsn	:output;
+	out_wsn	:output;
+	out_adr[6..0]	:output;
+
+	sclk0	:input;
+	lrc0	:output;
+	lrc1	:output;
+	
+	in_sdat	:input;
+	in_tmr	:input;
+	out_sclk	:output;
+	out_sdat	:output;
+	out_tmr	:output;
+)
+
+variable
+	buf_adr[6..0]	:dff;
+	buf_rsn	:dff;
+	buf_wsn0	:dff;
+	buf_wsn1	:dff;
+
+	lrc_cnt[6..0]	:dff;
+	lrc_ph[5..0]	:dff;
+
+begin
+	out_rstn = rstn;
+
+	case	in_adr[6..5] is
+		when B"00" =>
+			buf_adr[6..3].d = B"1110";
+		when B"01" =>
+			buf_adr[6..3].d = B"1101";
+		when B"10" =>
+			buf_adr[6..3].d = B"1011";
+		when B"11" =>
+			buf_adr[6..3].d = B"0111";
+	end case;
+	buf_adr[2..0].d = in_adr[4..2];
+	buf_adr[].prn = rstn;
+	buf_adr[].clk = !(bsel4 and bsel5);
+	out_adr[] = buf_adr[].q;
+
+	buf_rsn.prn = !((bsel4 or (!in_adr[1])) and bsel5);
+	buf_rsn.clk = !in_rsn;
+	buf_rsn.d = gnd;
+	buf_wsn0.prn = !((bsel4 or (!in_adr[1])) and bsel5);
+	buf_wsn0.clk = !in_wsn;
+	buf_wsn0.d = gnd;
+	buf_wsn1.clrn = !buf_wsn0.q;
+	buf_wsn1.clk = in_wsn;
+	buf_wsn1.d = vcc;
+	out_rsn = buf_rsn.q;
+	out_wsn = buf_wsn0.q or buf_wsn1.q;
+	out_dir = !buf_rsn.q;
+
+	out_sclk = sclk0;
+	out_sdat = in_sdat;
+	out_tmr = in_tmr;
+	if (in_sdat == vcc) then
+		lrc_ph[].d = lrc_ph[].q + 1;
+	else
+		lrc_ph[].d = 0;
+	end if;
+	lrc_ph[].clk = sclk0;
+
+	if (lrc_ph[].q < 28) then
+		lrc_cnt[].d = lrc_cnt[].q + 1;
+	else
+		lrc_cnt[].d = 0;
+	end if;
+	lrc_cnt[].clk = !sclk0;
+	if (lrc_cnt[].q < 24) then
+		lrc0 = vcc;
+	elsif (lrc_cnt[].q < 72) then
+		lrc0 = gnd;
+	else
+		lrc0 = vcc;
+	end if;
+	if (lrc_cnt[].q < 48) then
+		lrc1 = vcc;
+	elsif (lrc_cnt[].q < 96) then
+		lrc1 = gnd;
+	else
+		lrc1 = vcc;
+	end if;
+
+end;
+
+
